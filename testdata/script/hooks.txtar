@@ -1,0 +1,149 @@
+# init --hooks: a commit on the base restacks the variants in the background.
+[windows] skip 'hooks run under sh'
+
+exec git init -q repo
+cd repo
+commit style.css 'radius: 0' 'base: style'
+
+# A hook the user already had.
+cp $WORK/prev-hook .git/hooks/post-commit
+chmod 755 .git/hooks/post-commit
+cp .git/hooks/post-commit $WORK/prev-hook.orig
+
+exec bothways fork shape --alt circle --alt square
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+exec bothways path shape=square
+setenv-stdout SQUARE
+
+exec bothways status --json
+stdout '"post_commit": false'
+
+exec bothways init --hooks
+stdout '^initialized '
+stdout '^installed post-commit hook .*/\.git/hooks/post-commit \(runs .*/bothways; log: .*/\.git/bothways/hook\.log\)$'
+stdout '^chained existing post-commit hook, kept as .*/post-commit\.pre-bothways$'
+cmp .git/hooks/post-commit.pre-bothways $WORK/prev-hook.orig
+grep 'bothways-managed-hook' .git/hooks/post-commit
+
+# Installing again changes nothing and never chains the hook to itself.
+exec bothways init --hooks
+stdout '^post-commit hook already installed: '
+cmp .git/hooks/post-commit.pre-bothways $WORK/prev-hook.orig
+
+exec bothways status --json
+stdout '"post_commit": true'
+stdout '"binary_ok": true'
+stdout '"chained": ".*post-commit.pre-bothways"'
+
+# A commit inside a variant worktree does not sync; the chained hook still runs.
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+grep '^prev hook ran$' $WORK/prev.log
+exec bothways hook post-commit
+cd $WORK/repo
+! exists .git/bothways/hook.log
+
+# A commit on the base does, without holding up the commit.
+commit price.txt '+10%' 'base: price tag'
+exec git rev-parse main
+setenv-stdout BASE
+waitfor .git/bothways/hook.log '^\S+ sync onto '$BASE' exited 0$'
+grep -count=1 'post-commit on main' .git/bothways/hook.log
+grep '^shape=circle\tsynced$' .git/bothways/hook.log
+exec git merge-base main bothways/shape/circle
+stdout $BASE
+exec git log --format=%s main..bothways/shape/circle
+stdout '^circle: round frame$'
+exists $CIRCLE/price.txt
+exec git rev-parse bothways/shape/square
+stdout $BASE
+
+# Nobody asked for a hook-triggered sync in the moment, so it leaves a worktree
+# with work in progress alone rather than stashing and rebasing under someone.
+exec bothways path shape=square
+setenv-stdout SQUARE
+cp $WORK/resolved.css $SQUARE/scratch.txt
+commit tag.txt 'new' 'base: tag'
+exec git rev-parse main
+setenv-stdout TAGGED
+waitfor .git/bothways/hook.log '^\S+ sync onto '$TAGGED' exited 2$'
+grep '^shape=square\tskipped\t' .git/bothways/hook.log
+exec git rev-parse bothways/shape/square
+stdout $BASE
+exists $SQUARE/scratch.txt
+! exists $SQUARE/tag.txt
+rm $SQUARE/scratch.txt
+exec bothways sync shape=square
+
+# A sync that conflicts leaves the commit itself untouched.
+cd $CIRCLE
+commit style.css 'radius: 50%' 'circle: radius'
+cd $WORK/repo
+cp $WORK/conflict.css style.css
+exec git commit -q -a -m 'base: tweak radius'
+exec git rev-parse main
+setenv-stdout BASE
+waitfor .git/bothways/hook.log '^\S+ sync onto '$BASE' exited 2$'
+exec bothways status
+stdout '^shape +circle \* +conflict '
+exec git -C $CIRCLE status
+stdout 'rebase in progress'
+
+# The replayed commits of a rebase do not trigger it again.
+cd $CIRCLE
+cp $WORK/resolved.css style.css
+exec git add style.css
+env GIT_EDITOR=true
+exec git rebase --continue
+cd $WORK/repo
+grep -count=3 'post-commit on main' .git/bothways/hook.log
+
+# A recorded bothways that has gone away degrades to a logged no-op.
+cp .git/hooks/post-commit $WORK/ours
+exec sed -i.bak 's|^bothways=.*|bothways=''/nonexistent/gone/bothways''|' .git/hooks/post-commit
+exec bothways status --json
+stdout '"binary_ok": false'
+commit other.txt 'x' 'base: other'
+grep 'gone/bothways is missing; sync skipped' .git/bothways/hook.log
+cp $WORK/ours .git/hooks/post-commit
+rm .git/hooks/post-commit.bak
+
+# --no-hooks restores exactly what was there.
+exec bothways init --no-hooks
+stdout '^removed post-commit hook '
+stdout '^restored previous post-commit hook '
+cmp .git/hooks/post-commit $WORK/prev-hook.orig
+! exists .git/hooks/post-commit.pre-bothways
+exec bothways init --no-hooks
+stdout '^no bothways post-commit hook installed$'
+exec bothways status --json
+stdout '"post_commit": false'
+
+# Without a previous hook, uninstalling leaves none.
+rm .git/hooks/post-commit
+exec bothways init --hooks
+! stdout chained
+exec bothways init --no-hooks
+! exists .git/hooks/post-commit
+
+exitcode 1 bothways init --hooks --no-hooks
+
+# A hooks directory inside the working tree belongs to the user's hook manager.
+exec git config core.hooksPath .husky
+exitcode 1 bothways init --hooks
+stdout '^''.*/bothways'' hook post-commit </dev/null >/dev/null 2>&1 &$'
+stderr 'inside the working tree'
+! exists .husky
+exec git config core.hooksPath $WORK/global-hooks
+exitcode 1 bothways init --hooks
+stderr 'other repositories'
+! exists $WORK/global-hooks
+
+-- prev-hook --
+#!/bin/sh
+echo 'prev hook ran' >> "$WORK/prev.log"
+-- conflict.css --
+radius: 4px
+-- resolved.css --
+radius: 50%

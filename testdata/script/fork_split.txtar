@@ -1,0 +1,49 @@
+# fork --split turns already committed work into the first variant and rewinds the base.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec git rev-parse HEAD
+setenv-stdout BASE
+commit frame.txt 'border-radius: 50%' 'circle: round frame'
+commit frame.txt 'border-radius: 50%; shadow' 'circle: shadow'
+exec git rev-parse HEAD
+setenv-stdout CIRCLE_TIP
+
+exec bothways fork shape --alt circle --alt square --split HEAD~2
+stdout '^shape=circle\t'
+stdout '^shape=square\t'
+
+# The base went back to <rev>; nothing was lost, the commits moved to circle.
+exec git rev-parse main
+stdout $BASE
+exec git rev-parse bothways/shape/circle
+stdout $CIRCLE_TIP
+exec git rev-list --count main..bothways/shape/circle
+stdout '^2$'
+exec git log --format=%s main..bothways/shape/circle
+stdout 'circle: round frame'
+stdout 'circle: shadow'
+exec git rev-parse bothways/shape/square
+stdout $BASE
+
+# The base worktree's files follow the rewind; the circle worktree has the work.
+! exists frame.txt
+exec git status --porcelain
+! stdout .
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+grep 'shadow' $CIRCLE/frame.txt
+exec bothways path shape=square
+setenv-stdout SQUARE
+! exists $SQUARE/frame.txt
+
+exec bothways status --json
+stdout '"base_tip": "'$BASE'"'
+stdout '"ahead": 2'
+
+# Invalid split points.
+exitcode 1 bothways fork other --alt a --split HEAD
+stderr 'no commits'
+exitcode 1 bothways fork other --alt a --split nope
+stderr 'unknown revision'

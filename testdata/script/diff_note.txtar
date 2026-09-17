@@ -1,0 +1,40 @@
+# diff passes through to git diff; note attaches text shown in status.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+cd $WORK/repo
+
+exec bothways diff shape=circle
+stdout '^\+\+\+ b/frame.txt$'
+stdout '^\+round$'
+
+exec bothways diff shape=square shape=circle -- --stat
+stdout 'frame.txt \| 1 \+'
+
+exec bothways diff --json circle
+stdout '"from": "main"'
+stdout '"to": "bothways/shape/circle"'
+stdout '"path": "frame.txt"'
+stdout '"added": 1'
+
+exitcode 1 bothways diff
+exitcode 1 bothways diff a b c
+
+exec bothways note shape=circle 'ci: passed'
+stderr 'noted shape=circle'
+exec bothways note square reviewer liked it
+exec bothways status
+stdout '^shape +circle \* .*ci: passed$'
+stdout '^shape +square .*reviewer liked it$'
+exitcode 1 bothways note shape=oval 'x'
+
+# Outside a repository: environment error.
+cd $WORK
+exitcode 3 bothways status
+stderr 'not a git repository'

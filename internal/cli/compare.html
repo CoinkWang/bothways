@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en" data-layout="grid">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #15181e;
+  --muted: #626a79;
+  --line: #dde1e8;
+  --line-strong: #c6ccd7;
+  --accent: #2f6df6;
+  --code-bg: #eef1f6;
+  --shadow: 0 1px 1px rgba(18, 22, 31, .04), 0 6px 20px rgba(18, 22, 31, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1015;
+    --surface: #171a21;
+    --ink: #e6e9ef;
+    --muted: #97a0b0;
+    --line: #252a34;
+    --line-strong: #333a47;
+    --accent: #7ea6ff;
+    --code-bg: #10131a;
+    --shadow: 0 1px 1px rgba(0, 0, 0, .4);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: clamp(16px, 3vw, 32px);
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page { max-width: 1680px; margin: 0 auto; }
+
+code, .cmd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .92em;
+}
+
+/* Header */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: .02em;
+}
+.meta b { color: var(--ink); font-weight: 600; }
+h1 {
+  margin: 10px 0 0;
+  font-size: clamp(22px, 3.4vw, 31px);
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -.015em;
+  max-width: 40ch;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 20px;
+}
+button.toggle {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+button.toggle:hover { border-color: var(--accent); color: var(--accent); }
+button.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--muted); font-size: 13px; }
+
+/* Variant grid */
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(var(--variants, 2), minmax(0, 1fr));
+  align-items: stretch;
+}
+html[data-layout="rows"] .grid { grid-template-columns: minmax(0, 1fr); }
+html[data-layout="rows"] .frame:not([data-framed]) { min-height: 240px; }
+@media (max-width: 900px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .frame:not([data-framed]) { min-height: 240px; }
+  button.toggle { display: none; }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+/* One line, always the same height, so the frames line up across panels. */
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.panel-head h2 {
+  flex: none;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.panel-head .badge { flex: none; }
+.badge {
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.badge.default { color: var(--accent); border-color: var(--accent); }
+.url {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+.url:hover { color: var(--accent); text-decoration: underline; }
+/* A URL cut down to "htt..." says nothing; the link card still has it. */
+.panel { container-type: inline-size; }
+@container (max-width: 360px) { .url { visibility: hidden; } }
+button.as-link {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+button.as-link:hover { color: var(--accent); border-color: var(--accent); }
+button.as-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: clamp(340px, 58vh, 700px);
+  background: #fff;
+}
+html[data-layout="rows"] .frame { min-height: clamp(420px, 76vh, 880px); }
+.frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+.frame[data-blocked] iframe { display: none; }
+
+/* Cards: shown instead of a frame (no preview) or in place of one (refused). */
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  position: absolute;
+  inset: 0;
+  padding: 22px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  align-items: center;
+}
+.card-title { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; }
+.card p { margin: 0; max-width: 44ch; }
+.card a { color: var(--accent); word-break: break-all; }
+.fallback { display: none; }
+.frame[data-blocked] .fallback { display: flex; }
+
+.cmd {
+  display: inline-block;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 10px;
+  color: var(--ink);
+  user-select: all;
+  word-break: break-all;
+}
+.notes {
+  margin: 0;
+  padding: 10px 14px 12px 30px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Footer */
+footer { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 20px; }
+footer h2 { margin: 0; font-size: 15px; font-weight: 650; }
+footer p { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; max-width: 70ch; }
+.picks { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.picks li { display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="meta">
+    <span>decision <b>{{.Decision}}</b></span>
+    {{- with .Base}}<span>·</span><span>base <b>{{.}}</b></span>{{end}}
+    <span>·</span><span>{{.Count}} variants</span>
+  </div>
+  <h1>{{.Heading}}</h1>
+  <div class="controls">
+    <button class="toggle" id="layout" type="button" aria-pressed="false">Stack vertically</button>
+    <span class="hint">Look at the products, then run one of the commands at the bottom. Generated {{.Generated}}.</span>
+  </div>
+</header>
+
+<main class="grid" style="{{.GridStyle}}">
+  {{- range .Variants}}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>{{.ID}}</h2>
+      {{- if .Default}}<span class="badge default">default</span>{{end}}
+      <span class="badge">{{.State}}</span>
+      {{- if .URL}}
+      <a class="url" href="{{.URL}}" target="_blank" rel="noreferrer">{{.URL}} &#8599;</a>
+      <button class="as-link" type="button" aria-pressed="false">Link instead</button>
+      {{- end}}
+    </div>
+    {{- if .URL}}
+    <div class="frame" data-framed>
+      <iframe src="{{.URL}}" title="{{.Name}}" referrerpolicy="no-referrer"></iframe>
+      <div class="fallback card">
+        <p class="card-title">Not shown here</p>
+        <p>The frame stayed empty. Servers that send <code>X-Frame-Options</code> or a <code>frame-ancestors</code> policy refuse to be embedded; so does one that is not answering.</p>
+        <p><a href="{{.URL}}" target="_blank" rel="noreferrer">Open {{.URL}}</a></p>
+      </div>
+    </div>
+    {{- else}}
+    <div class="frame">
+      <div class="card">
+        <p class="card-title">No preview yet</p>
+        <p>{{.Reason}}</p>
+        {{- with .Up}}<p><code class="cmd">{{.}}</code></p>{{end}}
+      </div>
+    </div>
+    {{- end}}
+    {{- with .Notes}}
+    <ul class="notes">{{range .}}<li>{{.}}</li>{{end}}</ul>
+    {{- end}}
+  </section>
+  {{- end}}
+</main>
+
+<footer>
+  <h2>Keep one</h2>
+  <p>The base branch fast-forwards to the variant you pick; the others move to <code>bothways/rejected/</code> and never enter history.</p>
+  <ul class="picks">
+    {{- range .Variants}}
+    <li><code class="cmd">{{.Pick}}</code>{{if .Default}}<span class="badge default">default</span>{{end}}</li>
+    {{- end}}
+  </ul>
+</footer>
+
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  var button = document.getElementById("layout");
+  button.addEventListener("click", function () {
+    var stacked = root.getAttribute("data-layout") === "rows";
+    root.setAttribute("data-layout", stacked ? "grid" : "rows");
+    button.setAttribute("aria-pressed", stacked ? "false" : "true");
+    button.textContent = stacked ? "Stack vertically" : "Side by side";
+  });
+
+  // A preview that refuses to be framed (X-Frame-Options, frame-ancestors) is
+  // only refused in the browser, and Chromium leaves nothing behind to read:
+  // its error page answers every question exactly like a healthy cross-origin
+  // page. So each panel keeps a button that swaps in the link card by hand,
+  // and we automate the two cases we can actually see: a frame that never
+  // loads at all, and Firefox's readable about:blank.
+  Array.prototype.forEach.call(document.querySelectorAll(".frame[data-framed]"), function (frame) {
+    var iframe = frame.querySelector("iframe");
+    var toggle = frame.parentNode.querySelector("button.as-link");
+    var decided = false; // the reader chose; stop second-guessing them
+
+    function card(on) {
+      if (on) {
+        frame.setAttribute("data-blocked", "");
+      } else {
+        frame.removeAttribute("data-blocked");
+      }
+      toggle.setAttribute("aria-pressed", on ? "true" : "false");
+      toggle.textContent = on ? "Show frame" : "Link instead";
+    }
+
+    var timer = setTimeout(function () {
+      if (!decided) card(true);
+    }, 10000);
+
+    iframe.addEventListener("load", function () {
+      clearTimeout(timer);
+      if (decided) return;
+      var here;
+      try {
+        here = iframe.contentWindow.location.href;
+      } catch (e) {
+        card(false); // cross-origin: the preview itself is in there
+        return;
+      }
+      card(!here || here === "about:blank");
+    });
+
+    toggle.addEventListener("click", function () {
+      decided = true;
+      clearTimeout(timer);
+      card(!frame.hasAttribute("data-blocked"));
+    });
+  });
+})();
+</script>
+</body>
+</html>

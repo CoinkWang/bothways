@@ -1,0 +1,94 @@
+# fork creates one branch and one worktree per variant, outside the repo.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+
+exec bothways init
+stdout 'base: main'
+exec git config rerere.enabled
+stdout true
+
+exec bothways fork shape --alt circle --alt square --q 'logo frame: circle or square?'
+stdout '^shape=circle\t'${WORK@R}'/cache/bothways/[0-9a-f]{12}/shape/circle$'
+stdout '^shape=square\t'${WORK@R}'/cache/bothways/[0-9a-f]{12}/shape/square$'
+
+# Two branches stacked on the base tip.
+exec git rev-parse main
+setenv-stdout BASE
+exec git rev-parse bothways/shape/circle
+stdout $BASE
+exec git rev-parse bothways/shape/square
+stdout $BASE
+
+# Two worktrees with the branches checked out.
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+exists $CIRCLE/page.txt
+exec git -C $CIRCLE symbolic-ref --short HEAD
+stdout '^bothways/shape/circle$'
+exec bothways path square
+setenv-stdout SQUARE
+exec git -C $SQUARE symbolic-ref --short HEAD
+stdout '^bothways/shape/square$'
+
+# State lives in the common git dir, visible from any worktree.
+exists .git/bothways/state.json
+cd $SQUARE
+exec bothways status
+stdout '^DECISION +VARIANT +STATE +URL +BASE +WORKTREE'
+stdout '^shape +circle \* +idle +- += +'
+stdout '^shape +square +idle +- += +'
+cd $WORK/repo
+
+exec bothways status --json
+stdout '"schema_version": 1'
+stdout '"base_branch": "main"'
+stdout '"name": "shape=circle"'
+stdout '"behind_base": 0'
+
+exec bothways path --json shape=square
+stdout '"branch": "bothways/shape/square"'
+
+exec bothways tree
+stdout '^main [0-9a-f]{7}$'
+stdout '└── shape: logo frame: circle or square\?'
+stdout 'circle \*$'
+
+# The branch description records enough for doctor.
+exec git config branch.bothways/shape/circle.description
+stdout 'base=main'
+stdout 'default=circle'
+
+# Errors are user errors (exit 1).
+exitcode 1 bothways fork shape --alt oval
+stderr 'already open'
+exitcode 1 bothways fork frame --alt a --alt a
+stderr 'duplicate --alt'
+exitcode 1 bothways fork frame --alt a --default b
+exitcode 1 bothways fork frame --alt a --carry a --split HEAD
+exitcode 1 bothways fork rejected --alt a
+exitcode 1 bothways path shape=oval
+exitcode 1 bothways fork frame --alt round --alt boxy --q 'Logo frame: square or circle'
+stderr 'looks like an open decision'
+exec bothways fork frame --alt round --alt boxy --q 'Logo frame: square or circle' --force
+
+# A dirty base refuses to fork.
+cp ../dirty.txt page.txt
+exitcode 1 bothways fork color --alt red
+stderr 'uncommitted changes'
+exec git checkout -- page.txt
+
+# add appends a variant on the current base tip.
+exec bothways add shape --alt rounded
+stdout '^shape=rounded\t.*/shape/rounded$'
+exec git rev-parse bothways/shape/rounded
+stdout $BASE
+
+# up needs a [preview] section; down with nothing running is a no-op.
+exitcode 1 bothways up
+stderr 'no preview configured'
+exec bothways down
+
+-- dirty.txt --
+changed

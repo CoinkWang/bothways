@@ -1,0 +1,81 @@
+# drop removes one variant without deciding; gc cleans rejected branches and orphans.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square --alt oval
+exec bothways fork stroke --under shape=circle --alt thin
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+
+# Dropping the default re-points the default and takes nested decisions along.
+exec bothways drop shape=circle
+stdout '^dropped shape=circle$'
+stdout '^rejected shape=circle -> bothways/rejected/shape/circle$'
+stdout '^rejected stroke=thin -> bothways/rejected/stroke/thin$'
+stderr 'shape: default is now square'
+! exists $CIRCLE
+exec bothways status
+stdout '^shape +square \* '
+! stdout '^stroke'
+exec git config branch.bothways/shape/square.description
+stdout 'default=square'
+
+# --purge deletes the branch outright.
+exec bothways drop oval --purge
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/rejected/shape/oval
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/shape/oval
+
+# Re-rejecting the same name does not clobber the kept branch.
+exec bothways add shape --alt circle
+exec bothways drop shape=circle
+stdout 'bothways/rejected/shape/circle-2'
+
+# Recent rejections survive a default gc; --older-than 0s removes them.
+exec bothways gc
+! stdout 'deleted'
+exec git rev-parse --verify refs/heads/bothways/rejected/shape/circle
+exec bothways gc --older-than 0s
+stdout 'deleted branch bothways/rejected/shape/circle'
+stdout 'deleted branch bothways/rejected/stroke/thin'
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/rejected/shape/circle
+exec bothways status --json
+stdout '"rejected": \[\]'
+
+# A worktree under the bothways root that no variant owns is an orphan.
+exec bothways path shape=square
+setenv-stdout SQUARE
+exec git worktree add -q --detach $SQUARE/../../stray/thing HEAD
+exec bothways gc
+stdout 'removed orphan worktree .*stray/thing'
+exists $SQUARE/page.txt
+exitcode 1 bothways gc --older-than soon
+
+# A [worktree] max_disk budget reclaims idle worktrees and reports what it freed.
+cp $WORK/maxdisk.toml .bothways.toml
+exec bothways gc
+stdout '^reclaimed worktree shape=square \(\d+B\)$'
+stdout '^freed \d+B; worktree root is \d+B of 1B$'
+! exists $SQUARE/page.txt
+
+# A reclaimed worktree is a cache miss, not damage: status says so, path says
+# how to get it back, and sync rebuilds it.
+exec bothways status
+stdout '^shape +square \*? +reclaimed '
+! stdout 'missing'
+exitcode 1 bothways path shape=square
+stderr 'reclaimed by gc.*bothways sync'
+
+# Uncommitted work is never reclaimed silently.
+exec bothways sync
+exists $SQUARE/page.txt
+cp $WORK/maxdisk.toml $SQUARE/dirty.txt
+exec bothways gc
+! stdout 'reclaimed worktree shape=square'
+stderr 'nothing can be reclaimed safely'
+exec bothways gc --force
+stdout '^reclaimed worktree shape=square'
+
+-- maxdisk.toml --
+[worktree]
+max_disk = "1B"

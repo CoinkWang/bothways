@@ -1,0 +1,8 @@
+# pip has no user-level link farm either, so carry the virtualenv
+# copy-on-write; the carried venv is relocatable enough for its own
+# interpreter, which then reinstalls only when the requirements moved.
+setup       = ".venv/bin/python -m pip install -r requirements.txt"
+fingerprint = ["requirements.txt"]
+
+[paths]
+".venv" = "clone"

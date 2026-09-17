@@ -1,0 +1,7 @@
+# pnpm links dependencies out of a user-level content-addressed store, so a
+# fresh install in a new worktree is a hardlink pass, not a download.
+setup       = "pnpm install --frozen-lockfile"
+fingerprint = ["pnpm-lock.yaml", "package.json"]
+
+[paths]
+"node_modules" = "fresh"

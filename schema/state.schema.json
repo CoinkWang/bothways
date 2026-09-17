@@ -1,0 +1,405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CoinkWang/bothways/schema/state.schema.json",
+  "$defs": {
+    "Combo": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Combo name, as `bothways combo` and gc report it; never a variant argument."
+        },
+        "variants": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "type": "array",
+          "description": "The variants merged, in merge order."
+        },
+        "worktree": {
+          "type": "string",
+          "description": "Absolute path of the read-only, detached worktree."
+        },
+        "base_tip": {
+          "type": "string",
+          "description": "Base commit the variants were merged onto."
+        },
+        "commit": {
+          "type": "string",
+          "description": "Detached HEAD the merges produced."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the combo was built, RFC 3339 in UTC."
+        }
+      },
+      "type": "object",
+      "required": [
+        "name",
+        "variants",
+        "worktree",
+        "base_tip",
+        "commit",
+        "created_at"
+      ]
+    },
+    "Decision": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Decision id, the part before '=' in a variant name."
+        },
+        "question": {
+          "type": "string",
+          "description": "The question the variants answer; may be empty."
+        },
+        "default": {
+          "type": "string",
+          "description": "Id of the variant whose nested decisions get worktrees. Nothing is ever picked automatically: the default only decides which branch of the tree is materialized. Dropping the default makes the first remaining variant the default."
+        },
+        "under": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Ref"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The variant this decision is stacked on, or null when it forks from base_branch."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the decision was forked, RFC 3339 in UTC."
+        },
+        "variants": {
+          "items": {
+            "$ref": "#/$defs/Variant"
+          },
+          "type": "array"
+        },
+        "parent_branch": {
+          "type": "string",
+          "description": "The branch sync rebases this decision's variants onto: base_branch, or the branch of the variant named in under."
+        },
+        "deferred": {
+          "type": "boolean",
+          "description": "True when some ancestor variant is not its decision's default: the variants exist as branches but have no worktrees until that ancestor is picked or becomes the default."
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "question",
+        "default",
+        "under",
+        "created_at",
+        "variants",
+        "parent_branch",
+        "deferred"
+      ]
+    },
+    "Hooks": {
+      "properties": {
+        "post_commit": {
+          "type": "boolean",
+          "description": "True when the bothways post-commit hook is installed."
+        },
+        "path": {
+          "type": "string",
+          "description": "Absolute path of the installed hook file."
+        },
+        "binary": {
+          "type": "string",
+          "description": "Absolute path of the bothways binary the hook runs."
+        },
+        "binary_ok": {
+          "type": "boolean",
+          "description": "False when that binary is gone: the hook then only logs that it skipped. Rerun `bothways init --hooks` to record the current one."
+        },
+        "chained": {
+          "type": "string",
+          "description": "A post-commit hook that existed before install, kept and run after ours; restored by `bothways init --no-hooks`."
+        },
+        "log": {
+          "type": "string",
+          "description": "Absolute path of the log hook-triggered syncs write to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "post_commit",
+        "binary_ok"
+      ]
+    },
+    "Picked": {
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string"
+        },
+        "tip": {
+          "type": "string",
+          "description": "Commit base_branch was fast-forwarded to."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the pick happened, RFC 3339 in UTC."
+        }
+      },
+      "type": "object",
+      "required": [
+        "decision",
+        "variant",
+        "tip",
+        "at"
+      ]
+    },
+    "Preview": {
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "start",
+            "deploy",
+            "none"
+          ],
+          "description": "How the repository previews variants: start (bothways supervises a local server per slot), deploy (a script deploys an environment and prints its URL), or none (no preview configured)."
+        },
+        "pid": {
+          "type": "integer",
+          "description": "Process id, and process group, of a start-mode preview."
+        },
+        "url": {
+          "type": "string",
+          "description": "Where the preview answers; absent while down."
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the preview was last started or deployed, RFC 3339 in UTC."
+        },
+        "log": {
+          "type": "string",
+          "description": "Absolute path of the preview's log file; read it when state is failed."
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "up",
+            "starting",
+            "down",
+            "failed"
+          ],
+          "description": "up: the URL is serving (start mode passed its health check, or the deploy script printed the URL). starting: the server or deploy script runs but has not answered yet. down: no preview, and the slot is free. failed: the health check or deploy script failed; error says why and log has the output."
+        },
+        "error": {
+          "type": "string",
+          "description": "Why the preview failed; present only when state is failed."
+        }
+      },
+      "type": "object",
+      "required": [
+        "mode",
+        "state"
+      ]
+    },
+    "Ref": {
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "decision",
+        "variant"
+      ]
+    },
+    "Rejected": {
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string",
+          "description": "Where the variant's branch was renamed to, under bothways/rejected/."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the variant was rejected, RFC 3339 in UTC."
+        }
+      },
+      "type": "object",
+      "required": [
+        "decision",
+        "variant",
+        "branch",
+        "at"
+      ]
+    },
+    "Variant": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Variant id, unique within its decision."
+        },
+        "branch": {
+          "type": "string",
+          "description": "The variant's git branch, bothways/<decision>/<variant>."
+        },
+        "base_tip": {
+          "type": "string",
+          "description": "Commit of the decision's parent_branch this variant was last forked or synced onto."
+        },
+        "worktree": {
+          "type": "string",
+          "description": "Absolute path of the worktree where the variant is edited and committed; empty while the variant is deferred or reclaimed."
+        },
+        "slot": {
+          "type": "integer",
+          "description": "Preview budget slot the variant holds while its preview is not down; absent otherwise."
+        },
+        "preview": {
+          "$ref": "#/$defs/Preview",
+          "description": "The preview behind the variant's URL as it is right now: a recorded process that has died reads as down."
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Notes recorded with `bothways note`, oldest first."
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "conflict",
+            "deferred",
+            "missing",
+            "reclaimed"
+          ],
+          "description": "Lifecycle state. idle: the worktree exists and nothing is in progress (a running preview shows in preview.state). conflict: a sync stopped mid-rebase in the worktree; finish the rebase there (git add, git rebase --continue) and the next command reports idle; pick refuses the variant until then. deferred: nested under a non-default variant, so there is no worktree (see the decision's deferred). missing: the recorded worktree directory or the branch is gone; `bothways doctor` repairs the record. reclaimed: gc removed the idle worktree to stay under max_disk; the branch is intact and `bothways sync` rebuilds the worktree."
+        },
+        "sync_onto": {
+          "type": "string",
+          "description": "Present only in conflict: the parent commit the stopped rebase is heading to; it becomes base_tip once the rebase is finished."
+        },
+        "setup_fingerprint": {
+          "type": "string",
+          "description": "Internal: identifies the setup last run in the worktree, so it reruns when the setup changes."
+        },
+        "name": {
+          "type": "string",
+          "description": "<decision>=<variant>: how every command addresses this variant."
+        },
+        "default": {
+          "type": "boolean",
+          "description": "True for its decision's default variant (shown as * in status). Only the default variant's nested decisions have worktrees; it is never picked automatically."
+        },
+        "tip": {
+          "type": "string",
+          "description": "Commit the variant branch points at now; empty if the branch is gone, and state is then missing."
+        },
+        "ahead": {
+          "type": "integer",
+          "description": "Commits on the variant since base_tip: the work that makes it different."
+        },
+        "behind_base": {
+          "type": "integer",
+          "description": "Commits the decision's parent_branch gained since base_tip. Greater than 0 means the variant is stale and needs `bothways sync` (pick syncs on its own)."
+        },
+        "deferred": {
+          "type": "boolean",
+          "description": "Same as state == \"deferred\"."
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "branch",
+        "base_tip",
+        "worktree",
+        "state",
+        "name",
+        "default",
+        "tip",
+        "ahead",
+        "behind_base",
+        "deferred"
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of this contract; a reader built for this schema must refuse any other value."
+    },
+    "base_branch": {
+      "type": "string",
+      "description": "The branch top-level decisions fork from and pick fast-forwards."
+    },
+    "base_tip": {
+      "type": "string",
+      "description": "Commit base_branch points at now; empty if the branch does not exist yet."
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/Decision"
+      },
+      "type": "array",
+      "description": "Open decisions, every parent listed before the decisions nested under its variants."
+    },
+    "picked": {
+      "items": {
+        "$ref": "#/$defs/Picked"
+      },
+      "type": "array",
+      "description": "Decisions already settled by pick, oldest first."
+    },
+    "rejected": {
+      "items": {
+        "$ref": "#/$defs/Rejected"
+      },
+      "type": "array",
+      "description": "Variants that lost a pick or were dropped; their branches stay under bothways/rejected/ until gc removes them, so a reversed decision is recoverable."
+    },
+    "combos": {
+      "items": {
+        "$ref": "#/$defs/Combo"
+      },
+      "type": "array",
+      "description": "Read-only worktrees merging several variants on top of the base, for trying them together. Combos are not variants: nothing may be committed in them, and a combo name is never an argument to sync, pick or drop."
+    },
+    "hooks": {
+      "$ref": "#/$defs/Hooks",
+      "description": "Whether `bothways init --hooks` installed the post-commit hook. While it is installed, a commit on base_branch starts sync in the background, so variants restack without anyone running sync."
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "base_branch",
+    "base_tip",
+    "decisions",
+    "picked",
+    "rejected",
+    "combos",
+    "hooks"
+  ],
+  "title": "bothways status --json, schema_version 1",
+  "description": "Output of `bothways status --json`: the one JSON view of bothways state, shared by the CLI, the compare page and SKILL.md. Fields are only ever added, so ignore the ones you do not know; schema_version changes only with an incompatible change. Paths are absolute, or empty when there is none; times are RFC 3339 in UTC; commits are full hex object names."
+}

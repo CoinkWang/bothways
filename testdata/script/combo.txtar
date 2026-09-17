@@ -1,0 +1,99 @@
+# combo builds a read-only detached worktree merging several variants;
+# gc reclaims combos before anything else.
+
+exec git init -q repo
+cd repo
+exec git add .bothways.toml
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+exec bothways fork label --alt red --alt blue
+
+# Orthogonal variants: each changes a file of its own.
+cd $WORK/wt/shape/circle
+commit shape.css 'border-radius: 50%' 'circle: round frame'
+cd $WORK/wt/label/red
+commit label.css 'color: red' 'red: red label'
+cd $WORK/repo
+
+# The combo contains both changes and is detached, marked, and recorded.
+exec bothways combo shape=circle label=red
+stdout '^shape-circle\+label-red\t.*[\\/]wt[\\/]combo[\\/]shape-circle\+label-red$'
+stderr 'read-only merge of shape=circle, label=red'
+grep 'border-radius' $WORK/wt/combo/shape-circle+label-red/shape.css
+grep 'color: red' $WORK/wt/combo/shape-circle+label-red/label.css
+grep 'Do not commit here' $WORK/wt/combo/shape-circle+label-red/READONLY
+exitcode 1 git -C $WORK/wt/combo/shape-circle+label-red symbolic-ref -q HEAD
+grep '"name": "shape-circle\+label-red"' $WORK/repo/.git/bothways/state.json
+
+# It is not a variant: tree never lists it, and status shows it apart from the
+# variant table, in both text and JSON.
+exec bothways tree
+! stdout 'shape-circle'
+exec bothways status
+stdout '^COMBO \(read-only\) +VARIANTS +WORKTREE$'
+stdout '^shape-circle\+label-red +shape=circle label=red +'
+! stdout '^shape +shape-circle'
+exec bothways status --json
+stdout '"combos": \['
+exec bothways combo --json shape=circle label=red
+stdout '"schema_version": 1'
+stdout '"read_only": true'
+
+# doctor rebuilds decisions from branches; combos have no branch, so it keeps
+# the records it cannot rebuild.
+exec bothways doctor
+grep '"name": "shape-circle\+label-red"' $WORK/repo/.git/bothways/state.json
+exists $WORK/wt/combo/shape-circle+label-red/READONLY
+
+# Re-running rebuilds it against the current tips.
+cd $WORK/wt/label/red
+commit label.css 'color: crimson' 'red: darker'
+cd $WORK/repo
+exec bothways combo shape=circle label=red
+grep 'crimson' $WORK/wt/combo/shape-circle+label-red/label.css
+exec git worktree list
+stdout -count=1 '[\\/]combo[\\/]shape-circle\+label-red'
+
+# A conflicting combination names the pair and leaves nothing behind.
+exec bothways fork edge --alt sharp --alt soft
+cd $WORK/wt/edge/sharp
+commit shape.css 'border-radius: 0' 'sharp: square corners'
+cd $WORK/repo
+exitcode 2 bothways combo shape=circle edge=sharp
+stderr 'shape=circle and edge=sharp conflict in shape.css'
+! exists $WORK/wt/combo/shape-circle+edge-sharp
+exec git worktree list
+! stdout 'edge-sharp'
+
+# Two alternatives of one decision answer the same question.
+exitcode 1 bothways combo shape=circle shape=square
+stderr 'alternatives of the same decision'
+
+# A combo whose variants are gone is stale, whatever the disk budget says.
+exec bothways drop label=blue
+exec bothways gc
+! stdout 'removed stale combo'
+exec bothways drop label=red
+exec bothways gc
+stdout '^removed stale combo shape-circle\+label-red \(label=red is no longer open\)$'
+! exists $WORK/wt/combo/shape-circle+label-red
+
+# Under a disk budget the combo goes first, before any variant worktree.
+exec bothways combo shape=circle edge=soft
+cp $WORK/maxdisk.toml .bothways.toml
+exec bothways gc
+stdout '(?s)^reclaimed combo shape-circle\+edge-soft .*reclaimed worktree '
+stdout '^freed .*worktree root is '
+! exists $WORK/wt/combo/shape-circle+edge-soft
+
+# Variant worktrees are a cache: the next sync puts them back.
+exec bothways sync
+exists $WORK/wt/shape/circle/page.txt
+
+-- repo/.bothways.toml --
+[worktree]
+root = "../wt"
+-- maxdisk.toml --
+[worktree]
+root = "../wt"
+max_disk = "1B"

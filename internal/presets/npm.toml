@@ -1,0 +1,8 @@
+# npm's cache holds tarballs, not a link farm: a fresh install re-extracts
+# every package. Carry node_modules copy-on-write instead and let npm reconcile
+# it when the variant's lockfile differs from the base's.
+setup       = "npm install"
+fingerprint = ["package-lock.json", "package.json"]
+
+[paths]
+"node_modules" = "clone"

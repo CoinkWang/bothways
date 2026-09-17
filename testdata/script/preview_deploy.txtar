@@ -1,0 +1,95 @@
+# Deploy mode: a script prints the URL on its last non-empty line; the
+# environment is named after .Name, never the slot.
+
+[windows] skip 'the deploy scripts are sh'
+
+exec git init -q repo
+cd repo
+cp $WORK/bothways.toml .bothways.toml
+cp $WORK/deploy.sh deploy.sh
+cp $WORK/down.sh down.sh
+cp $WORK/garbage.sh garbage.sh
+exec git add .
+exec bothways trust
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+
+exec bothways up shape=circle
+stdout '^shape=circle\tup\thttps://shape-circle.review.example.test$'
+stderr 'deploying as shape-circle'
+grep 'rendered env-shape-circle-1 slot 1' .git/bothways/previews/shape-circle.log
+grep -count=1 'shape-circle' $WORK/deploys.txt
+
+exec bothways status
+stdout '^shape +circle \* +up +https://shape-circle.review.example.test '
+stdout '^shape +square +idle +- '
+exec bothways status --json
+stdout '"mode": "deploy",'
+stdout '"url": "https://shape-circle.review.example.test",'
+stdout '"state": "up"$'
+
+# Already deployed: nothing runs again unless --redeploy says so.
+exec bothways up shape=circle
+stdout '^shape=circle\tunchanged\thttps://shape-circle.review.example.test$'
+grep -count=1 'shape-circle' $WORK/deploys.txt
+exec bothways up --redeploy shape=circle
+stdout '^shape=circle\tup\t'
+grep -count=2 'shape-circle' $WORK/deploys.txt
+
+# sync never redeploys a remote environment.
+commit price.txt '+10%' 'base: price tag'
+exec bothways sync
+grep -count=2 'shape-circle' $WORK/deploys.txt
+
+# down runs the down script with the environment name and frees the slot.
+exec bothways down shape=circle
+stdout '^shape=circle\tdown$'
+grep '^released shape-circle$' $WORK/released.txt
+exec bothways status
+stdout '^shape +circle \* +idle +- '
+
+# A worktree that goes away (drop, pick, gc) takes its preview along.
+exec bothways up shape=circle
+exec bothways drop shape=circle
+grep -count=2 '^released shape-circle$' $WORK/released.txt
+
+# A script whose last line is not a URL is a partial failure; the log stays.
+cp $WORK/garbage.toml .bothways.toml
+exec bothways trust
+exitcode 2 bothways up shape=square
+stdout '^shape=square\tfailed\t.*did not print a URL: last line was "deployed, probably"'
+grep 'deployed, probably' .git/bothways/previews/shape-square.log
+exec bothways status
+stdout '^shape +square \* +failed +- '
+
+# Without a down script, down only forgets the deployment.
+exec bothways down shape=square
+stdout '^shape=square\tdown$'
+! grep 'square' $WORK/released.txt
+exec bothways status
+stdout '^shape +square \* +idle +- '
+
+-- bothways.toml --
+[preview]
+deploy = "sh ./deploy.sh {{.Name}}"
+down = "sh ./down.sh {{.Name}}"
+
+[preview.env]
+REVIEW_ENV = "env-{{.Name}}-{{.Slot}}"
+
+-- garbage.toml --
+[preview]
+deploy = "sh ./garbage.sh"
+
+-- deploy.sh --
+echo "rendered $REVIEW_ENV slot $BOTHWAYS_SLOT"
+echo "$1" >> "$WORK/deploys.txt"
+echo "https://$1.review.example.test"
+echo
+
+-- down.sh --
+echo "released $1" >> "$WORK/released.txt"
+
+-- garbage.sh --
+echo "https://looks-like-a-url.example.test"
+echo "deployed, probably"

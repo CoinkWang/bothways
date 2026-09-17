@@ -1,0 +1,83 @@
+# Nested decisions stack on their parent variant, follow it on sync, and are
+# reclaimed when the parent loses.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+cd $WORK/repo
+
+# Under the default variant: materialized, stacked on circle's tip.
+exec bothways fork stroke --under shape=circle --alt thin --alt none --q 'stroke on the round frame?'
+stdout '^stroke=thin\t.*/stroke/thin$'
+exec git rev-parse bothways/shape/circle
+setenv-stdout CIRCLE_TIP
+exec git rev-parse bothways/stroke/thin
+stdout $CIRCLE_TIP
+exec bothways path stroke=thin
+setenv-stdout THIN
+exists $THIN/frame.txt
+cd $THIN
+commit stroke.txt '1px' 'thin: stroke'
+cd $WORK/repo
+
+# Under a non-default variant: deferred, no worktree.
+exec bothways fork corner --under shape=square --alt sharp --alt soft
+stdout '^corner=sharp\t\(deferred\)$'
+exitcode 1 bothways path corner=sharp
+stderr 'deferred'
+exec bothways tree
+stdout 'circle \*'
+stdout 'stroke: stroke on the round frame\?'
+stdout 'sharp \* \[deferred\]'
+exec bothways tree --json
+stdout '"deferred": true'
+
+# Picking a nested decision before its parent is refused.
+exitcode 1 bothways pick stroke=thin
+stderr 'pick shape=circle first'
+
+# Base moves: sync restacks parent first, then the nested variant on the parent.
+commit price.txt '+10%' 'base: price tag'
+exec bothways sync
+stdout '^shape=circle\tsynced$'
+stdout '^stroke=thin\tsynced$'
+stdout '^corner=sharp\t(synced|up-to-date)$'
+exec git rev-parse main
+setenv-stdout BASE
+exec git merge-base main bothways/shape/circle
+stdout $BASE
+exec git rev-parse bothways/shape/circle
+setenv-stdout CIRCLE_TIP
+exec git merge-base bothways/shape/circle bothways/stroke/thin
+stdout $CIRCLE_TIP
+exec git log --format=%s bothways/shape/circle..bothways/stroke/thin
+stdout '^thin: stroke$'
+exists $THIN/price.txt
+exec git merge-base main bothways/corner/sharp
+stdout $BASE
+
+# Picking square rejects circle together with everything nested under it,
+# and materializes the decision that was deferred under square.
+exec bothways pick shape=square
+stdout '^rejected shape=circle -> bothways/rejected/shape/circle$'
+stdout '^rejected stroke=thin -> bothways/rejected/stroke/thin$'
+stdout '^rejected stroke=none -> bothways/rejected/stroke/none$'
+exec git rev-parse --verify refs/heads/bothways/rejected/stroke/thin
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/stroke/thin
+! exists $THIN
+! exists $CIRCLE
+exec bothways status
+! stdout '^stroke'
+stdout '^corner +sharp \* +idle '
+stdout '^corner +soft +idle '
+exec bothways path corner=soft
+setenv-stdout SOFT
+exists $SOFT/page.txt
+exec git config branch.bothways/corner/sharp.description
+! stdout under=

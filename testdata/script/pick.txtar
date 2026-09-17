@@ -1,0 +1,84 @@
+# pick fast-forwards the base to the winner; the loser never enters history.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec git rev-parse HEAD
+setenv-stdout OLD_BASE
+exec bothways fork shape --alt circle --alt square
+exec bothways fork label --alt red --alt blue
+
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+exec bothways path shape=square
+setenv-stdout SQUARE
+exec bothways path label=red
+setenv-stdout RED
+
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+cd $SQUARE
+commit frame.txt 'square' 'square: square frame'
+cd $RED
+commit label.txt 'red' 'red: label'
+
+# The base moved since the fork: pick syncs the winner first.
+cd $WORK/repo
+commit price.txt '+10%' 'base: price tag'
+
+# Dirty loser worktrees are protected unless --force.
+cp $WORK/scratch.txt $SQUARE/scratch.txt
+exitcode 1 bothways pick shape=circle
+stderr 'would be lost'
+rm $SQUARE/scratch.txt
+
+exec bothways pick shape=circle
+stdout '^picked shape=circle: main [0-9a-f]{7} -> [0-9a-f]{7}$'
+stdout '^rejected shape=square -> bothways/rejected/shape/square$'
+
+# Base is a linear fast-forward containing circle, not square.
+exec git rev-list --merges main
+! stdout .
+exec git log --format=%s main
+stdout '^circle: round frame$'
+stdout '^base: price tag$'
+! stdout 'square'
+exec git merge-base --is-ancestor $OLD_BASE main
+
+# The base worktree moved along.
+grep round frame.txt
+exec git status --porcelain --untracked-files=no
+! stdout .
+
+# Winner branch and worktree reclaimed; loser kept under rejected/.
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/shape/circle
+exec git rev-parse --verify refs/heads/bothways/rejected/shape/square
+exec git log --format=%s bothways/rejected/shape/square
+stdout 'square: square frame'
+! exists $CIRCLE
+! exists $SQUARE
+
+# The orthogonal decision was restacked onto the new base.
+exec git rev-parse main
+setenv-stdout NEW_BASE
+exec git merge-base main bothways/label/red
+stdout $NEW_BASE
+exists $RED/frame.txt
+exec bothways status
+! stdout '^shape'
+stdout '^label +red \* +idle +- += '
+
+exec bothways status --json
+stdout '"decision": "shape",\s*"variant": "circle"'
+stdout '"branch": "bothways/rejected/shape/square"'
+
+# Pick again the other way with --purge: nothing kept.
+exec bothways pick label=blue --purge
+! stdout rejected
+exitcode 1 git rev-parse --verify --quiet refs/heads/bothways/rejected/label/red
+exec bothways status
+stdout 'no open decisions \(base: main\)'
+exitcode 1 bothways pick label=blue
+
+-- scratch.txt --
+unsaved

@@ -1,0 +1,63 @@
+# A conflicting variant stops mid-rebase, exits 2, and does not hold up the others.
+
+exec git init -q repo
+cd repo
+commit style.css 'radius: 0' 'base: style'
+exec bothways fork shape --alt circle --alt square
+
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit style.css 'radius: 50%' 'circle: radius'
+
+exec bothways path shape=square
+setenv-stdout SQUARE
+cd $SQUARE
+commit square.css 'corner: 2px' 'square: corners'
+
+cd $WORK/repo
+commit style.css 'radius: 4px' 'base: tweak radius'
+exec git rev-parse main
+setenv-stdout BASE
+
+exitcode 2 bothways sync
+stdout '^shape=circle\tconflict\tresolve in '
+stdout '^shape=square\tsynced$'
+stderr 'did not sync cleanly'
+
+# square went ahead.
+exec git merge-base main bothways/shape/square
+stdout $BASE
+exists $SQUARE/square.css
+
+# circle is stopped in its worktree and flagged.
+exists $CIRCLE/.git
+exec git -C $CIRCLE status
+stdout 'rebase in progress'
+exec bothways status
+stdout '^shape +circle \* +conflict '
+stdout '^shape +square +idle +- += '
+exec bothways status --json
+stdout '"state": "conflict"'
+
+# Picking it is refused until resolved; a second sync reports it again.
+exitcode 2 bothways pick shape=circle
+exitcode 2 bothways sync shape=circle
+stdout 'rebase in progress'
+
+# Resolve and continue: the next command folds the result back in.
+cd $CIRCLE
+cp $WORK/resolved.css style.css
+exec git add style.css
+env GIT_EDITOR=true
+exec git rebase --continue
+cd $WORK/repo
+exec bothways status
+stdout '^shape +circle \* +idle +- += '
+exec bothways sync
+stdout '^shape=circle\tup-to-date$'
+exec git merge-base main bothways/shape/circle
+stdout $BASE
+
+-- resolved.css --
+radius: 50%

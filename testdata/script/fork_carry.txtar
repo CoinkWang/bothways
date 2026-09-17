@@ -1,0 +1,63 @@
+# fork --carry moves uncommitted work into one variant, and [worktree] config applies.
+
+exec git init -q repo
+cd repo
+cp ../gitignore .gitignore
+commit page.txt 'brand list' 'base: brand list'
+exec git add .gitignore
+exec git commit -q -m 'ignore env'
+cp ../env .env
+cp ../bothways.toml .bothways.toml
+exec bothways trust
+mkdir data
+cp ../weights.bin data/weights.bin
+
+# nothing to carry on a clean tree
+exitcode 1 bothways fork shape --alt circle --alt square --carry circle
+stderr 'nothing to carry'
+
+cp ../frame.txt page.txt
+exec bothways fork shape --alt circle --alt square --carry circle
+stdout '^shape=circle\t'${WORK@R}'/wt/shape/circle$'
+stderr 'running setup'
+
+# Base is clean again; the change is uncommitted in circle only.
+exec git status --porcelain --untracked-files=no
+! stdout .
+grep 'brand list' page.txt
+grep 'round' $WORK/wt/shape/circle/page.txt
+exec git -C $WORK/wt/shape/circle status --porcelain
+stdout 'page.txt'
+! grep 'round' $WORK/wt/shape/square/page.txt
+
+# copy strategy carried the gitignored .env; setup ran with BOTHWAYS_* env.
+grep 'SECRET=1' $WORK/wt/shape/circle/.env
+grep 'shape-square' $WORK/wt/shape/square/setup.out
+
+# link strategy shared data/: a file added to the base shows up in the variants.
+grep 'weights' $WORK/wt/shape/square/data/weights.bin
+[!windows] cp ../weights.bin data/later.bin
+[!windows] grep 'weights' $WORK/wt/shape/circle/data/later.bin
+
+exec bothways status --json
+stdout '"setup_fingerprint": "[0-9a-f]{64}"'
+
+-- gitignore --
+.env
+data/
+setup.out
+-- env --
+SECRET=1
+-- weights.bin --
+weights
+-- frame.txt --
+brand list, round frame
+-- bothways.toml --
+[worktree]
+root        = "../wt"
+setup       = "echo $BOTHWAYS_NAME > setup.out"
+fingerprint = ["page.txt"]
+
+[worktree.paths]
+".env"  = "copy"
+"data/" = "link"

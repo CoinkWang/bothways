@@ -1,0 +1,48 @@
+# compare writes one HTML page per decision: the question, one panel per
+# variant, and the pick command for each of them.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square --q 'logo frame: circle or square?'
+
+exec bothways compare shape --no-open
+stdout '/bothways/compare/shape\.html$'
+setenv-stdout PAGE
+exists $PAGE
+
+# The question titles the page; both variants get a panel.
+grep '<title>logo frame: circle or square\?</title>' $PAGE
+grep '<h1>logo frame: circle or square\?</h1>' $PAGE
+grep -count=2 '<section class="panel">' $PAGE
+grep '<h2>circle</h2>' $PAGE
+grep '<h2>square</h2>' $PAGE
+grep 'class="badge default"' $PAGE
+
+# The footer carries the exact command for each variant.
+grep 'bothways pick shape=circle' $PAGE
+grep 'bothways pick shape=square' $PAGE
+
+# No preview started: link cards, not iframes.
+! grep '<iframe' $PAGE
+grep -count=2 'No preview yet' $PAGE
+grep 'bothways up shape=circle' $PAGE
+grep 'bothways up shape=square' $PAGE
+
+# A deferred variant says so instead of offering `up`.
+exec bothways fork corner --under shape=square --alt sharp --alt soft
+exec bothways compare corner --no-open
+setenv-stdout CORNER
+grep 'deferred' $CORNER
+! grep 'bothways up corner=sharp' $CORNER
+grep 'bothways pick corner=sharp' $CORNER
+
+# Regenerating overwrites the same file, so a reload is enough.
+exec bothways compare shape --no-open
+stdout $PAGE
+
+# Unknown decision, wrong arity: user errors.
+exitcode 1 bothways compare nope
+stderr 'no open decision "nope"'
+exitcode 1 bothways compare
+exitcode 1 bothways compare shape corner

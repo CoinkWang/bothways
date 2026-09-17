@@ -1,0 +1,87 @@
+# sync restacks variants after the base moves forward.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+
+# Shared work lands on the base.
+cd $WORK/repo
+commit price.txt '+10%' 'base: price tag'
+exec git rev-parse main
+setenv-stdout BASE
+
+exec bothways status
+stdout '^shape +circle \* +idle +- +-1 '
+stdout '^shape +square +idle +- +-1 '
+
+exec bothways sync
+stdout '^shape=circle\tsynced$'
+stdout '^shape=square\tsynced$'
+
+# circle = new base + its own commit; square fast-forwarded to the base.
+exec git merge-base main bothways/shape/circle
+stdout $BASE
+exec git log --format=%s main..bothways/shape/circle
+stdout '^circle: round frame$'
+exec git rev-list --count main..bothways/shape/circle
+stdout '^1$'
+exec git rev-parse bothways/shape/square
+stdout $BASE
+
+# Worktrees were updated in place.
+exists $CIRCLE/price.txt
+exists $CIRCLE/frame.txt
+exec bothways path shape=square
+setenv-stdout SQUARE
+exists $SQUARE/price.txt
+
+exec bothways status
+stdout '^shape +circle \* +idle +- += '
+
+exec bothways sync --json
+stdout '"outcome": "up-to-date"'
+
+# Uncommitted work in a variant worktree survives a sync.
+cp $WORK/wip.txt $CIRCLE/frame.txt
+commit more.txt 'more' 'base: more'
+exec bothways sync shape=circle
+stdout '^shape=circle\tsynced$'
+! stdout square
+grep 'work in progress' $CIRCLE/frame.txt
+exists $CIRCLE/more.txt
+exec bothways status
+stdout '^shape +square +idle +- +-1 '
+
+# --skip-dirty leaves a worktree someone is editing alone: no stash, no rebase,
+# the branch stays where it was. Clean variants still sync.
+exec git rev-parse bothways/shape/circle
+setenv-stdout CIRCLE_TIP
+commit extra.txt 'extra' 'base: extra'
+exitcode 2 bothways sync --skip-dirty
+stdout '^shape=circle\tskipped\tuncommitted changes in .*; left alone, run `bothways sync` when done$'
+stdout '^shape=square\tsynced$'
+exec git rev-parse bothways/shape/circle
+stdout $CIRCLE_TIP
+! exists $CIRCLE/extra.txt
+grep 'work in progress' $CIRCLE/frame.txt
+exec git stash list
+! stdout .
+
+# Untracked files count as someone working, too.
+exec git -C $CIRCLE checkout -- frame.txt
+cp $WORK/wip.txt $CIRCLE/notes.txt
+exitcode 2 bothways sync --skip-dirty shape=circle
+stdout '^shape=circle\tskipped\t'
+rm $CIRCLE/notes.txt
+exec bothways sync --skip-dirty shape=circle
+stdout '^shape=circle\tsynced$'
+exists $CIRCLE/extra.txt
+
+-- wip.txt --
+work in progress

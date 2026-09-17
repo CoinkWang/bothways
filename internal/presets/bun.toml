@@ -1,0 +1,6 @@
+# bun installs out of a global cache, hardlinking into the worktree.
+setup       = "bun install --frozen-lockfile"
+fingerprint = ["bun.lock", "bun.lockb", "package.json"]
+
+[paths]
+"node_modules" = "fresh"

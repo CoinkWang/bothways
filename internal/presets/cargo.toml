@@ -1,0 +1,7 @@
+# The registry cache is user-level, so fetching in a new worktree is cheap.
+# target/ is build output: rebuilding is safer than sharing stale artifacts.
+setup       = "cargo fetch --locked"
+fingerprint = ["Cargo.lock", "Cargo.toml"]
+
+[paths]
+"target" = "fresh"

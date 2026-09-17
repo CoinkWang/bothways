@@ -1,0 +1,93 @@
+# Start mode: bothways supervises a server per variant on base_port + slot.
+# Slots belong to running previews and the budget is enforced.
+
+[windows] skip 'start mode is exercised with sh and kill'
+[!exec:python3] skip 'python3 is not installed'
+
+exec git init -q repo
+cd repo
+cp $WORK/bothways.toml .bothways.toml
+exec git add .bothways.toml
+exec bothways trust
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt a --alt b --alt c
+
+# Two previews come up on slots 1 and 2, answer, and outlive bothways.
+exec bothways up shape=a shape=b
+stdout '^shape=a\tup\thttp://127.0.0.1:47311$'
+stdout '^shape=b\tup\thttp://127.0.0.1:47312$'
+stderr 'waiting for http://127.0.0.1:47311/'
+exec python3 $WORK/get.py http://127.0.0.1:47311/
+exec python3 $WORK/get.py http://127.0.0.1:47312/
+exists .git/bothways/previews/shape-a.pid
+exists .git/bothways/previews/shape-a.log
+
+exec bothways status
+stdout '^shape +a \* +up +http://127.0.0.1:47311 +='
+stdout '^shape +b +up +http://127.0.0.1:47312 '
+stdout '^shape +c +idle +- '
+exec bothways status --json
+stdout '"slot": 1,'
+stdout '"state": "up"$'
+stdout '"started_at": "'
+stdout '"mode": "start",\n\s+"state": "down"'
+exec bothways tree
+stdout 'a \* \[up\] http://127.0.0.1:47311'
+
+# up is idempotent for a running preview.
+exec bothways up shape=a
+stdout '^shape=a\tunchanged\thttp://127.0.0.1:47311$'
+
+# up --all needs a third slot and never evicts its own targets.
+exitcode 1 bothways up --all
+stderr 'preview budget of 2 slot\(s\) is full'
+stdout '^shape=a\tunchanged'
+! stdout 'shape=c\tup'
+
+# down stops the process group and releases the slot.
+exec bothways down shape=a
+stdout '^shape=a\tdown$'
+! exec python3 $WORK/get.py http://127.0.0.1:47311/
+! exists .git/bothways/previews/shape-a.pid
+exec bothways status
+stdout '^shape +a \* +idle +- '
+
+# c takes the slot a released; a comes back on a different one by reclaiming
+# the least recently started preview, b.
+exec bothways up shape=c
+stdout '^shape=c\tup\thttp://127.0.0.1:47311$'
+exec bothways up shape=a
+stderr 'reclaiming slot 2 from shape=b'
+stdout '^shape=a\tup\thttp://127.0.0.1:47312$'
+exec python3 $WORK/get.py http://127.0.0.1:47312/
+exec bothways status
+stdout '^shape +b +idle +- '
+stdout '^shape +c +up +http://127.0.0.1:47311 '
+
+# A preview that dies on its own is noticed by the next command.
+exec cat .git/bothways/previews/shape-c.pid
+setenv-stdout PID
+exec kill $PID
+exec sleep 1
+exec bothways status
+stdout '^shape +c +idle +- '
+
+exec bothways down
+stdout '^shape=a\tdown$'
+stdout '^shape=c\tdown$'
+! exec python3 $WORK/get.py http://127.0.0.1:47312/
+exec bothways status --json
+! stdout '"state": "up"'
+
+-- bothways.toml --
+[preview]
+start = "exec python3 -m http.server --bind 127.0.0.1 {{.Port}}"
+url = "http://127.0.0.1:{{.Port}}"
+health = "/"
+slots = 2
+base_port = 47310
+timeout = "20s"
+
+-- get.py --
+import sys, urllib.request
+urllib.request.urlopen(sys.argv[1], timeout=5)

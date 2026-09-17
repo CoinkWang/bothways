@@ -1,0 +1,142 @@
+# .bothways.toml can make bothways run shell commands; none of them runs until
+# the user has trusted the file's exact content.
+
+[windows] skip 'the configured commands are sh'
+
+exec git init -q repo
+cd repo
+cp $WORK/bothways.toml .bothways.toml
+exec git add .bothways.toml
+commit page.txt 'brand list' 'base: brand list'
+
+# --show lists every key that runs something and changes nothing.
+exec bothways trust --show
+stdout 'runs:$'
+stdout '^  worktree.setup +echo ran >> '
+stdout '^  preview.deploy +echo https://\{\{.Name\}\}.example.test'
+stdout '^  preview.down +echo released'
+stdout '^  preview.env.STAGE +review'
+stdout '^  run.runner +echo '
+stdout '^not trusted: run `bothways trust`'
+exec bothways trust --show --json
+stdout '"state": "untrusted"'
+stdout '"key": "worktree.setup"'
+! exists $WORK/state/bothways/trust.json
+
+# fork still creates the worktrees, but skips setup with one warning.
+exec bothways fork shape --alt circle --alt square
+stderr -count=1 'warning: setup skipped: .*\.bothways\.toml is not trusted'
+! stderr 'running setup'
+exists $WORK/wt/shape/circle/page.txt
+! exists $WORK/setup-circle.txt
+
+# Commands whose whole point is running the config refuse outright.
+exitcode 1 bothways up shape=circle
+stderr 'is not trusted, so bothways will not start previews; review it with `bothways trust --show`'
+exitcode 1 bothways restart shape=circle
+stderr 'will not restart previews'
+exitcode 1 bothways run shape=circle
+stderr 'will not start runners'
+! exists $WORK/ran-circle
+
+# A runner passed on the command line is the user's own command.
+exec bothways run --runner 'echo {{.Variant}} > "$WORK/own-{{.Variant}}"' shape=circle
+exists $WORK/own-circle
+
+# Once trusted everything runs, and up catches up on the setup fork skipped.
+exec bothways trust
+stdout '^trusted \(sha256 [0-9a-f]{7}\)$'
+exists $WORK/state/bothways/trust.json
+exec bothways up shape=circle
+stderr 'shape=circle: running setup'
+stdout '^shape=circle\tup\thttps://shape-circle.example.test$'
+grep ran $WORK/setup-circle.txt
+
+# Trusting again is a no-op.
+exec bothways trust
+stdout '^trusted '
+
+# Any edit to the file needs a new trust, including one that runs nothing new.
+cp $WORK/edited.toml .bothways.toml
+exec bothways trust --show --json
+stdout '"state": "changed"'
+exitcode 1 bothways down shape=circle
+stderr 'changed since it was trusted, so bothways will not run the down script for shape=circle'
+
+# pick and drop check before they touch anything, so a deployment is never
+# left behind halfway through.
+exitcode 1 bothways drop shape=circle
+stderr 'will not run the down script for shape=circle'
+exec bothways status
+stdout '^shape +circle \* +up '
+
+exec bothways trust
+exec bothways drop shape=circle
+grep '^released shape-circle$' $WORK/released.txt
+
+# --revoke forgets the file.
+exec bothways trust --revoke
+stdout '^no longer trusting .*\.bothways\.toml$'
+exec bothways trust --revoke
+stdout 'was not trusted$'
+exec bothways trust --show --json
+stdout '"state": "untrusted"'
+
+# A file that runs nothing needs no trust.
+cp $WORK/plain.toml .bothways.toml
+exec bothways trust --show
+stdout 'runs no commands: nothing to trust$'
+exec bothways trust --show --json
+stdout '"state": "not-needed"'
+
+# A preset installs dependencies, so selecting one counts too.
+cp $WORK/preset.toml .bothways.toml
+exec bothways trust --show
+stdout '^  worktree.preset +cargo$'
+stdout '^  worktree.setup +cargo fetch --locked +\(from preset cargo\)$'
+
+# Without a file there is nothing to trust.
+rm .bothways.toml
+exec bothways trust
+stdout 'no \.bothways\.toml in .*: nothing to trust$'
+
+-- bothways.toml --
+[worktree]
+root  = "../wt"
+setup = "echo ran >> \"$WORK/setup-$BOTHWAYS_VARIANT.txt\""
+
+[preview]
+deploy = "echo https://{{.Name}}.example.test"
+down   = "echo released {{.Name}} >> \"$WORK/released.txt\""
+
+[preview.env]
+STAGE = "review"
+
+[run]
+runner = "echo {{.Variant}} > \"$WORK/ran-{{.Variant}}\""
+-- edited.toml --
+# slots only, nothing new runs
+[worktree]
+root  = "../wt"
+setup = "echo ran >> \"$WORK/setup-$BOTHWAYS_VARIANT.txt\""
+
+[preview]
+deploy = "echo https://{{.Name}}.example.test"
+down   = "echo released {{.Name}} >> \"$WORK/released.txt\""
+slots  = 2
+
+[preview.env]
+STAGE = "review"
+
+[run]
+runner = "echo {{.Variant}} > \"$WORK/ran-{{.Variant}}\""
+-- plain.toml --
+[worktree]
+root = "../wt"
+
+[preview]
+slots = 2
+-- preset.toml --
+[worktree]
+root   = "../wt"
+preset = "cargo"

@@ -1,0 +1,119 @@
+# Ecosystem presets: a lockfile selects path strategies and a setup command.
+
+exec bothways preset list
+stdout '^NAME +LOCKFILES +PATHS +SETUP$'
+stdout '^pnpm +pnpm-lock\.yaml +node_modules=fresh +pnpm install --frozen-lockfile$'
+stdout '^npm +package-lock\.json +node_modules=clone +npm install$'
+
+exec bothways preset list --json
+stdout '"name": "cargo"'
+stdout '"lockfiles"'
+
+exec bothways preset show uv
+stdout '^setup += "uv sync --frozen"$'
+stdout '^"\.venv" = "fresh"$'
+
+exec bothways preset show npm --json
+stdout '"node_modules": "clone"'
+
+exitcode 1 bothways preset show poetry
+stderr 'unknown preset'
+exitcode 1 bothways preset poetry
+stderr 'unknown preset command'
+
+# Presets are opt-in: a preset runs install commands, so a lockfile alone
+# changes nothing until the repository asks for detection.
+exec git init -q repo
+cd repo
+commit pnpm-lock.yaml 'lockfileVersion: 9' 'base: a pnpm project'
+
+exec bothways preset show
+stdout '^# preset: none$'
+stdout '^setup += ""$'
+
+# auto detects the preset from the repository root.
+cp $WORK/auto.toml .bothways.toml
+exec bothways preset show
+stdout '^# preset: pnpm \(detected\)$'
+stdout '^setup += "pnpm install --frozen-lockfile"$'
+stdout '^"node_modules" = "fresh"$'
+
+exec bothways preset show --json
+stdout '"name": "pnpm"'
+stdout '"detected": true'
+
+# What the repository sets itself wins; the preset fills in the rest.
+cp $WORK/override.toml .bothways.toml
+exec bothways preset show --json
+stdout '"setup": "make deps"'
+stdout '"node_modules": "link"'
+stdout '"pnpm-lock.yaml"'
+
+# An explicit name beats detection.
+cp $WORK/explicit.toml .bothways.toml
+exec bothways preset show
+stdout '^# preset: cargo$'
+stdout 'cargo fetch --locked'
+
+# none disables detection entirely.
+cp $WORK/none.toml .bothways.toml
+exec bothways preset show
+stdout '^# preset: none$'
+stdout '^setup += ""$'
+
+# An unknown preset is a user error wherever the config is read.
+cp $WORK/bogus.toml .bothways.toml
+exitcode 1 bothways preset show
+stderr 'unknown preset'
+exitcode 1 bothways status
+stderr 'unknown preset'
+
+# The clone strategy carries a gitignored tree copy-on-write, degrading to a
+# plain copy where the filesystem will not reflink.
+cp $WORK/clone.toml .bothways.toml
+cp $WORK/gitignore .gitignore
+exec git add .gitignore .bothways.toml
+exec git commit -q -m 'config'
+mkdir node_modules/pkg
+cp $WORK/index.js node_modules/pkg/index.js
+exec bothways fork shape --alt circle --alt square
+grep 'module' $WORK/wt/shape/circle/node_modules/pkg/index.js
+grep 'module' $WORK/wt/shape/square/node_modules/pkg/index.js
+
+-- clone.toml --
+[worktree]
+root   = "../wt"
+preset = "none"
+
+[worktree.paths]
+"node_modules" = "clone"
+
+-- gitignore --
+node_modules/
+
+-- index.js --
+module.exports = 1
+
+-- auto.toml --
+[worktree]
+preset = "auto"
+
+-- override.toml --
+[worktree]
+preset = "auto"
+setup  = "make deps"
+
+[worktree.paths]
+"node_modules" = "link"
+
+-- explicit.toml --
+[worktree]
+preset = "cargo"
+
+-- none.toml --
+[worktree]
+preset = "none"
+
+-- bogus.toml --
+[worktree]
+preset = "poetry"

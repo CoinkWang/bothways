@@ -1,0 +1,6 @@
+# uv hardlinks wheels out of its user-level cache into a new virtualenv.
+setup       = "uv sync --frozen"
+fingerprint = ["uv.lock", "pyproject.toml"]
+
+[paths]
+".venv" = "fresh"

@@ -1,0 +1,66 @@
+# doctor rebuilds state.json from bothways/* branches.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square --default square --q 'circle or square?'
+exec bothways fork stroke --under shape=square --alt thin --alt none
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+cd $WORK/repo
+exec bothways note shape=circle 'ci: passed'
+exec bothways status --json
+cp stdout $WORK/before.json
+
+rm .git/bothways/state.json
+exec bothways status
+stdout 'no open decisions'
+
+exec bothways doctor
+stdout 'state.json is missing; rebuilding from branches'
+stdout 'adopting decision shape'
+stdout 'ok: 2 open decision\(s\), base main'
+
+exec bothways status
+stdout '^shape +circle +idle +- += +.*/shape/circle'
+stdout '^shape +square \* +idle '
+stdout '^stroke +thin \* +idle '
+exec bothways status --json
+stdout '"question": "circle or square\?"'
+stdout '"decision": "shape",\s*"variant": "square"'
+stdout '"ahead": 1'
+exec bothways tree
+stdout 'square \*'
+stdout '    └── stroke'
+
+# Everything keeps working after the rebuild.
+exec bothways pick shape=circle
+stdout 'rejected stroke=thin'
+exec git log --format=%s main
+stdout 'circle: round frame'
+
+# A corrupt file is rebuilt too, and doctor adopts branches created by hand.
+exec git branch bothways/color/red
+cp $WORK/garbage .git/bothways/state.json
+exitcode 3 bothways status
+stderr 'corrupt'
+exec bothways doctor
+stdout 'unreadable'
+stdout 'adopting decision color'
+exec bothways status
+stdout '^color +red \* +idle '
+
+# Worktrees deleted by hand are recreated.
+exec bothways path color=red
+setenv-stdout RED
+rm $RED
+exec bothways status
+stdout '^color +red \* +missing '
+exec bothways doctor
+stdout 'created worktree for color=red'
+exists $RED/page.txt
+
+-- garbage --
+{ not json

@@ -1,0 +1,126 @@
+# hoist sinks a commit that belongs to everyone from a variant down to the base.
+
+exec git init -q repo
+cd repo
+commit page.txt 'brand list' 'base: brand list'
+exec bothways fork shape --alt circle --alt square
+
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+exec bothways path shape=square
+setenv-stdout SQUARE
+
+cd $CIRCLE
+commit frame.txt 'round' 'circle: round frame'
+commit typo.txt 'fixed' 'shared: fix typo'
+exec git rev-parse HEAD
+setenv-stdout FIX
+
+cd $WORK/repo
+exec git rev-parse HEAD
+setenv-stdout BASE0
+
+# Only the variant's own commits can be hoisted, and only once.
+exitcode 1 bothways hoist $BASE0
+stderr 'already on main'
+exitcode 1 bothways hoist $FIX --from shape=square
+stderr 'is not on shape=square'
+
+# --from is inferred: circle is the only variant that has the commit.
+exec bothways hoist $FIX
+stdout '^hoisted 1 commit from shape=circle: main [0-9a-f]{7} -> [0-9a-f]{7}$'
+
+# It is on the base now, and gone from circle.
+exec git log --format=%s main
+stdout '^shared: fix typo$'
+exec git log --format=%s main..bothways/shape/circle
+stdout '^circle: round frame$'
+! stdout 'fix typo'
+exec git rev-list --count main..bothways/shape/circle
+stdout '^1$'
+exists typo.txt
+
+# The sibling was restacked by the automatic sync and has it too.
+exec git rev-parse main
+setenv-stdout BASE1
+exec git rev-parse bothways/shape/square
+stdout $BASE1
+exists $SQUARE/typo.txt
+exists $CIRCLE/typo.txt
+exists $CIRCLE/frame.txt
+
+# No temporary worktree survived the cherry-pick.
+exec git worktree list --porcelain
+! stdout 'bothways-hoist'
+exec bothways status
+stdout '^shape +circle \* +idle +- += '
+stdout '^shape +square +idle +- += '
+
+# A range works too; the commit on top of it stays with the variant.
+cd $SQUARE
+commit a.txt 'a' 'shared: a'
+commit b.txt 'b' 'shared: b'
+commit c.txt 'c' 'square: corner radius'
+exec git rev-parse HEAD~3
+setenv-stdout SQ_FROM
+exec git rev-parse HEAD~1
+setenv-stdout SQ_TO
+exec bothways hoist $SQ_FROM..$SQ_TO
+stdout '^hoisted 2 commits from shape=square: main [0-9a-f]{7} -> [0-9a-f]{7}$'
+
+exec git log --format=%s main
+stdout '^shared: a$'
+stdout '^shared: b$'
+! stdout 'corner radius'
+exec git log --format=%s main..bothways/shape/square
+stdout '^square: corner radius$'
+exec git rev-list --count main..bothways/shape/square
+stdout '^1$'
+exists $CIRCLE/a.txt
+exists $CIRCLE/b.txt
+! exists $CIRCLE/c.txt
+
+# History stays linear and every variant is level with the base again.
+exec git rev-list --merges main
+! stdout .
+exec bothways status
+stdout '^shape +circle \* +idle +- += '
+stdout '^shape +square +idle +- += '
+
+# A commit no open variant has is a user error, not a crash.
+exitcode 1 bothways hoist $FIX
+stderr 'no open variant has'
+
+# Work that does not apply to the base stops before anything moves.
+cd $CIRCLE
+commit frame.txt 'round thick' 'circle: thicker frame'
+exec git rev-parse HEAD
+setenv-stdout THICK
+cd $WORK/repo
+exec git rev-parse main
+setenv-stdout BASE2
+exitcode 2 bothways hoist $THICK
+stderr 'does not apply cleanly onto main'
+exec git rev-parse main
+stdout $BASE2
+exec git worktree list --porcelain
+! stdout 'bothways-hoist'
+
+# The base still gets the work when only the variant side conflicts; the
+# rebase is left in the variant worktree for the user to finish.
+cd $CIRCLE
+commit page.txt 'brand list v2' 'shared: page v2'
+exec git rev-parse HEAD
+setenv-stdout PAGEV2
+commit page.txt 'brand list v3' 'circle: page v3'
+cd $WORK/repo
+exitcode 2 bothways hoist $PAGEV2
+stdout '^hoisted 1 commit from shape=circle: '
+stderr 'removing it from shape=circle conflicted'
+exec git log --format=%s main
+stdout '^shared: page v2$'
+exec bothways status
+stdout '^shape +circle \* +conflict '
+exists $CIRCLE/.git
+exec git -C $CIRCLE status --porcelain=v1
+stdout '^UU page.txt$'

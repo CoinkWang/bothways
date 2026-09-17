@@ -1,0 +1,47 @@
+# up skips setup while the fingerprint files hash as they did after the last
+# setup, and runs it again once they change on the variant or its base.
+
+[windows] skip 'setup and deploy commands are sh'
+
+exec git init -q repo
+cd repo
+cp $WORK/bothways.toml .bothways.toml
+exec git add .bothways.toml
+exec bothways trust
+commit lock.txt 'deps v1' 'base: lockfile'
+
+# fork sets each worktree up once.
+exec bothways fork shape --alt circle --alt square
+grep -count=1 ran $WORK/setup-circle.txt
+
+# The lockfile matches what setup saw: up does not reinstall.
+exec bothways up shape=circle
+stderr 'shape=circle: setup skipped \(fingerprint unchanged\)'
+grep -count=1 ran $WORK/setup-circle.txt
+
+# The variant changes its lockfile: setup runs, once.
+exec bothways path shape=circle
+setenv-stdout CIRCLE
+cd $CIRCLE
+commit lock.txt 'deps v2' 'circle: bump deps'
+cd $WORK/repo
+exec bothways restart shape=circle
+stderr 'shape=circle: running setup'
+grep -count=2 ran $WORK/setup-circle.txt
+exec bothways restart shape=circle
+stderr 'setup skipped'
+grep -count=2 ran $WORK/setup-circle.txt
+
+# The base changes the lockfile: up syncs square onto it first, then sets up.
+commit lock.txt 'deps v3' 'base: bump deps'
+exec bothways up shape=square
+stderr 'shape=square: running setup'
+grep -count=2 ran $WORK/setup-square.txt
+
+-- bothways.toml --
+[worktree]
+setup = "echo ran >> \"$WORK/setup-$BOTHWAYS_VARIANT.txt\""
+fingerprint = ["lock.txt"]
+
+[preview]
+deploy = "echo https://$BOTHWAYS_NAME.example.test"
