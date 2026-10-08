@@ -78,7 +78,7 @@ down to the base.
 ## Configuration
 
 Previews and worktree setup are configured in `.bothways.toml` at the repository
-root:
+root. A typical file:
 
 ```toml
 [worktree]
@@ -95,7 +95,68 @@ slots  = 4
 ```
 
 `bothways preset list` shows built-in presets for pnpm, npm, bun, uv, pip and
-cargo, enabled with `preset = "auto"` or a preset name under `[worktree]`.
+cargo, enabled with `preset = "auto"` or a preset name under `[worktree]`;
+`bothways preset show` prints the `[worktree]` settings in effect.
+
+### Reference
+
+Every key, with its default:
+
+```toml
+[worktree]
+root        = ""        # where worktrees go; default $XDG_CACHE_HOME/bothways/<repo-id>.
+                        # Relative paths are resolved against the repository root; "~/" works.
+preset      = "none"    # "auto" picks a built-in preset from the lockfiles, or name one
+setup       = ""        # shell command run in every new worktree, and again by `up` when
+                        # the fingerprint files changed since the last successful run
+fingerprint = []        # files whose content decides whether setup reruns; empty = always rerun
+max_disk    = ""        # e.g. "20GB": `gc` removes idle worktrees until the root fits
+
+[worktree.paths]        # gitignored paths a new worktree takes from the base's worktree:
+                        #   clone  copy-on-write copy (APFS, btrfs, xfs); plain copy elsewhere
+                        #   link   symlink to the base worktree's copy
+                        #   copy   plain copy
+                        #   fresh  leave it out for setup to rebuild (the default)
+
+[preview]               # set start or deploy, not both
+start          = ""     # long-running command bothways supervises, e.g. "pnpm dev --port {{.Port}}"
+url            = "http://localhost:{{.Port}}"   # address of a start-mode preview
+health         = ""     # path appended to url and polled until it answers 200, e.g. "/"
+timeout        = "60s"  # how long health polling waits
+deploy         = ""     # one-shot script; the last non-empty line it prints is the URL
+down           = ""     # tears down what deploy created; without it `down` only forgets the URL
+deploy_timeout = "15m"
+slots          = 4      # previews running at once
+base_port      = 3000   # {{.Port}} is base_port + {{.Slot}}
+
+[preview.env]           # extra environment for start, deploy and down, e.g.
+                        # DATABASE_URL = "postgres://localhost/app_{{.Slot}}"
+
+[fork]
+similarity_threshold = 0.6   # fork refuses a question this similar to an open one (0 to 1);
+                             # `fork --force` skips the check
+
+[run]
+runner = ""             # agent command `bothways run` starts in each variant's worktree, e.g.
+                        # "claude -p \"$(cat '{{.PromptFile}}')\""
+jobs   = 2              # runners at once
+```
+
+`start`, `url`, `deploy`, `down` and the `[preview.env]` values are Go templates
+over `{{.Slot}}`, `{{.Port}}`, `{{.Name}}` (`shape-circle`), `{{.Decision}}`,
+`{{.Variant}}` and `{{.Worktree}}`. A slot belongs to a running preview, not to a
+variant, so a variant may get a different one next time; name remote
+environments after `{{.Name}}`. The `runner` template gets `{{.Worktree}}`,
+`{{.Decision}}`, `{{.Variant}}` and `{{.PromptFile}}`.
+
+Every command bothways runs gets `BOTHWAYS_NAME`, `BOTHWAYS_DECISION`,
+`BOTHWAYS_VARIANT` and `BOTHWAYS_WORKTREE` in its environment; previews also get
+`BOTHWAYS_SLOT`. Setup runs before a slot is assigned, so it has no slot and is
+not a template.
+
+The same keys in `~/.config/bothways/config.toml` (or under `$XDG_CONFIG_HOME`)
+set per-user defaults, such as a `runner` or a worktree `root`. The repository
+file wins key by key, and only its commands need `bothways trust`.
 
 ## Trust
 
