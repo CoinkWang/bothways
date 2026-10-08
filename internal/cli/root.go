@@ -135,6 +135,7 @@ Exit codes: 0 ok, 1 user error, 2 conflict or partial failure, 3 environment err
 		newCompareCmd(),
 		newHookCmd(),
 		newTrustCmd(),
+		newSkillCmd(),
 	)
 	for _, cmd := range root.Commands() {
 		if exclusiveCommands[cmd.Name()] {

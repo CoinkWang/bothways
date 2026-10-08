@@ -187,9 +187,13 @@ In Claude Code, install it as a plugin, then invoke it with `/bothways:bothways`
 /plugin install bothways@bothways
 ```
 
-Other agents that read Agent Skills take the same file: copy it into their
-skills directory, for Claude Code without the plugin
-`~/.claude/skills/bothways/SKILL.md`, invoked with `/bothways`.
+Or install the copy embedded in the binary, which always matches the installed
+CLI; rerun it with `--force` after upgrading bothways:
+
+```bash
+bothways skill install                       # ~/.claude/skills/bothways/SKILL.md, invoked as /bothways
+bothways skill install --dir <skills dir>    # any other agent that reads Agent Skills
+```
 
 Every read command accepts `--json`. The shape of `bothways status --json` is
 [`schema/state.schema.json`](schema/state.schema.json). Exit codes: `0` ok,
@@ -211,6 +215,7 @@ Every read command accepts `--json`. The shape of `bothways status --json` is
 | `note` | Attach a note shown in `status` |
 | `gc`, `doctor` | Clean up rejected branches and worktrees, rebuild state |
 | `trust`, `preset` | Allow the repository's commands, inspect presets |
+| `skill` | Print or install the agent skill matching this binary |
 
 `bothways <command> --help` has the details.
 

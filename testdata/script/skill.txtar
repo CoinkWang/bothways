@@ -1,0 +1,42 @@
+# skill prints and installs the SKILL.md embedded in the binary. It needs no
+# repository.
+
+exec bothways skill show
+stdout '^name: bothways$'
+stdout '^# bothways$'
+cp stdout want.md
+
+# install defaults to ~/.claude/skills (USERPROFILE is the home on Windows).
+env USERPROFILE=$HOME
+exec bothways skill install
+stdout '^installed\t.*[/\\]\.claude[/\\]skills[/\\]bothways[/\\]SKILL\.md$'
+cmp $HOME/.claude/skills/bothways/SKILL.md want.md
+
+exec bothways skill install
+stdout '^up to date\t'
+
+# A SKILL.md that differs is left alone until --force.
+cp edited.md $HOME/.claude/skills/bothways/SKILL.md
+exitcode 1 bothways skill install
+stderr 'differs from the skill of bothways .*--force'
+cmp $HOME/.claude/skills/bothways/SKILL.md edited.md
+
+exec bothways skill install --force
+stdout '^replaced\t'
+cmp $HOME/.claude/skills/bothways/SKILL.md want.md
+
+# --dir names another agent's skills directory; relative paths work.
+exec bothways skill install --dir agent/skills
+stdout '^installed\t'
+cmp agent/skills/bothways/SKILL.md want.md
+
+exitcode 1 bothways skill frobnicate
+stderr 'unknown skill command'
+exitcode 1 bothways skill show extra
+exitcode 1 bothways skill install extra
+
+-- edited.md --
+---
+name: bothways
+---
+edited by hand
