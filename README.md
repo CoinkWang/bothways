@@ -18,12 +18,21 @@ losing version is deleting a directory.
 
 ## Install
 
-Requires Go 1.24+ and git 2.38+. Tested on macOS; Linux and Windows builds
-compile but are not yet covered by CI.
+Requires git 2.38+.
+
+```bash
+brew install CoinkWang/tap/bothways
+```
+
+Or download a binary for macOS, Linux or Windows from
+[Releases](https://github.com/CoinkWang/bothways/releases), or build it with
+Go 1.24+:
 
 ```bash
 go install github.com/CoinkWang/bothways/cmd/bothways@latest
 ```
+
+`bothways --version` prints the installed version.
 
 ## Concepts
 
@@ -138,6 +147,8 @@ Every read command accepts `--json`. The shape of `bothways status --json` is
 - Works on whole git repositories; no monorepo subdirectories, no jj.
 - Previews assume the project can be started with one command.
 - `combo` worktrees cannot be previewed with `up` yet.
+- Windows is experimental: CI builds and tests it, but does not yet require it
+  to pass.
 
 ## License
 
