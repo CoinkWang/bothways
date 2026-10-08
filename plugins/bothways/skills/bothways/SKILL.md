@@ -10,6 +10,8 @@ Several ways of doing one task, kept as sibling branches on a shared base, one w
 
 Three names: a **decision** is the question (`shape`), a **variant** is one answer (`circle`), the **base** is the branch the user was already on. A variant is always written `shape=circle`.
 
+This skill drives the `bothways` CLI. If `bothways --version` fails, tell the user it is not installed and how to get it — `brew install CoinkWang/tap/bothways`, or `go install github.com/CoinkWang/bothways/cmd/bothways@latest` — instead of installing it yourself.
+
 ## Authorization
 
 This skill being loaded authorizes nothing by itself. Every command that writes runs only after the user says yes to that specific command in this conversation. These run freely: `status`, `tree`, `path`, `diff` (all with `--json`), `note`, `compare --no-open`, and `trust --show`.

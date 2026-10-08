@@ -27,7 +27,8 @@ archives:
     files:
       - LICENSE
       - README.md
-      - SKILL.md
+      - src: plugins/bothways/skills/bothways/SKILL.md
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt

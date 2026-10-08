@@ -1,0 +1,12 @@
+{
+  "name": "bothways",
+  "description": "Build several approaches to one task side by side in separate git worktrees, run them, then keep one with a fast-forward. Needs the bothways CLI.",
+  "author": {
+    "name": "CoinkWang",
+    "url": "https://github.com/CoinkWang"
+  },
+  "homepage": "https://github.com/CoinkWang/bothways",
+  "repository": "https://github.com/CoinkWang/bothways",
+  "license": "MIT",
+  "keywords": ["git", "worktree", "variants", "preview", "compare"]
+}

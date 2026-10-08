@@ -176,9 +176,20 @@ setup, and `up`, `restart`, `run` and down scripts refuse to start.
 
 ## Using it with coding agents
 
-[`SKILL.md`](SKILL.md) teaches an agent when to fork, how to work in the
-worktrees, and how to hand the decision back. In Claude Code, copy it to
-`~/.claude/skills/bothways/SKILL.md` and invoke it with `/bothways`.
+[`SKILL.md`](plugins/bothways/skills/bothways/SKILL.md) teaches an agent when to
+fork, how to work in the worktrees, and how to hand the decision back. The agent
+still needs the `bothways` CLI installed.
+
+In Claude Code, install it as a plugin, then invoke it with `/bothways:bothways`:
+
+```
+/plugin marketplace add CoinkWang/bothways
+/plugin install bothways@bothways
+```
+
+Other agents that read Agent Skills take the same file: copy it into their
+skills directory, for Claude Code without the plugin
+`~/.claude/skills/bothways/SKILL.md`, invoked with `/bothways`.
 
 Every read command accepts `--json`. The shape of `bothways status --json` is
 [`schema/state.schema.json`](schema/state.schema.json). Exit codes: `0` ok,
