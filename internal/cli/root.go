@@ -8,9 +8,26 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
+
+// Version is stamped by release builds with
+// -ldflags "-X github.com/CoinkWang/bothways/internal/cli.Version=v1.2.3".
+var Version = ""
+
+// version falls back to the module version, which `go install ...@v1.2.3`
+// records, and to "dev" for a plain checkout build.
+func version() string {
+	if Version != "" {
+		return Version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
+}
 
 // Exit codes are part of the agent contract.
 const (
@@ -86,9 +103,11 @@ base fast-forwards to it; the rest disappear without reverts.
 
 Variants are always written <decision>=<variant>. Read commands accept --json.
 Exit codes: 0 ok, 1 user error, 2 conflict or partial failure, 3 environment error.`,
+		Version:       version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.SetVersionTemplate("bothways {{.Version}}\n")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return &exitError{ExitUser, err}
 	})
@@ -116,6 +135,7 @@ Exit codes: 0 ok, 1 user error, 2 conflict or partial failure, 3 environment err
 		newCompareCmd(),
 		newHookCmd(),
 		newTrustCmd(),
+		newSkillCmd(),
 	)
 	for _, cmd := range root.Commands() {
 		if exclusiveCommands[cmd.Name()] {

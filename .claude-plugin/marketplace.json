@@ -1,0 +1,15 @@
+{
+  "name": "bothways",
+  "description": "The bothways skill: build several approaches to one task side by side and keep one.",
+  "owner": {
+    "name": "CoinkWang",
+    "url": "https://github.com/CoinkWang"
+  },
+  "plugins": [
+    {
+      "name": "bothways",
+      "source": "./plugins/bothways",
+      "description": "Build several approaches to one task side by side in separate git worktrees, run them, then keep one with a fast-forward. Needs the bothways CLI."
+    }
+  ]
+}

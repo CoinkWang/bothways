@@ -1,0 +1,70 @@
+# Release with: git tag v0.1.0 && git push origin v0.1.0
+# .github/workflows/release.yml runs goreleaser on the tag; see RELEASING.md.
+version: 2
+
+project_name: bothways
+
+builds:
+  - id: bothways
+    main: ./cmd/bothways
+    binary: bothways
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/CoinkWang/bothways/internal/cli.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - src: plugins/bothways/skills/bothways/SKILL.md
+        strip_parent: true
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^ci:"
+      - "^docs:"
+      - "^test:"
+
+release:
+  prerelease: auto
+
+# The tap repository CoinkWang/homebrew-tap must exist, and the workflow needs
+# a HOMEBREW_TAP_GITHUB_TOKEN secret that can push to it. Without the secret
+# the release still publishes binaries and skips the tap.
+homebrew_casks:
+  - name: bothways
+    binaries: [bothways]
+    homepage: https://github.com/CoinkWang/bothways
+    description: Build several approaches to one task side by side in git worktrees, keep one with a fast-forward
+    license: MIT
+    repository:
+      owner: CoinkWang
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    skip_upload: '{{ if not (isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN") }}true{{ end }}'
+    commit_msg_template: "bothways {{ .Tag }}"
+    # The binaries are not notarized; without this Gatekeeper refuses to run
+    # what the cask installed.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bothways"]
+          end

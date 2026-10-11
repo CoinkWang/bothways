@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+      - name: go mod tidy
+        run: go mod tidy -diff
+      - run: go vet ./...
+      - name: cross-compile
+        run: |
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            echo "== $target"
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/bothways
+            GOOS=${target%/*} GOARCH=${target#*/} go vet ./...
+          done
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    # Windows builds but has never had a green run; report it without
+    # blocking until it does.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: git --version
+      - run: go test -race -count=1 ./...
+
+  # 2.38 is the oldest git bothways accepts (rebase --update-refs); the
+  # runners ship a much newer one.
+  test-min-git:
+    name: test (git 2.38.0)
+    runs-on: ubuntu-latest
+    env:
+      GIT_VERSION: 2.38.0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/git-${{ env.GIT_VERSION }}
+          key: git-${{ env.GIT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: build git
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://mirrors.edge.kernel.org/pub/software/scm/git/git-$GIT_VERSION.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          make -C "$RUNNER_TEMP/git-$GIT_VERSION" -j"$(nproc)" prefix="$HOME/git-$GIT_VERSION" \
+            NO_CURL=1 NO_EXPAT=1 NO_OPENSSL=1 NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 \
+            install
+      - run: echo "$HOME/git-$GIT_VERSION/bin" >> "$GITHUB_PATH"
+      - name: check git version
+        run: git --version | grep -F "git version $GIT_VERSION"
+      - run: go test -race -count=1 ./...
